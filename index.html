@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Solar System Simulation</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background: #000; 
+      font-family: 'Segoe UI', sans-serif; 
+    }
+    /* Header & instructions */
+    #header {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 28px;
+      font-weight: bold;
+      z-index: 30;
+      pointer-events: none;
+    }
+    #instructions {
+      position: absolute;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #ccc;
+      font-size: 16px;
+      z-index: 30;
+      pointer-events: none;
+    }
+    /* Panels */
+    #loading { 
+      position: absolute; 
+      top: 10px; 
+      left: 10px; 
+      color: #fff; 
+      z-index: 20; 
+      background: rgba(0,0,0,0.6); 
+      padding: 6px 12px; 
+      border-radius: 4px; 
+      font-size: 14px; 
+    }
+    #info-panel { 
+      position: absolute; 
+      bottom: 20px; 
+      left: 20px; 
+      background: rgba(0,0,0,0.8); 
+      color: #fff; 
+      padding: 15px; 
+      border: 1px solid #444; 
+      border-radius: 4px; 
+      max-width: 300px; 
+      transition: all 0.5s ease; 
+      z-index: 20; 
+    }
+    #info-panel h2 { 
+      margin: 0 0 10px; 
+      font-size: 20px; 
+      font-weight: 500; 
+    }
+    #info-panel p { 
+      margin: 5px 0; 
+      font-size: 14px; 
+      line-height: 1.4; 
+    }
+    #close-info { 
+      position: absolute; 
+      top: 5px; 
+      right: 10px; 
+      cursor: pointer; 
+      font-weight: bold; 
+      color: #ccc; 
+    }
+    #sim-clock { 
+      position: absolute; 
+      bottom: 20px; 
+      right: 20px; 
+      color: #fff; 
+      background: rgba(0,0,0,0.6); 
+      padding: 6px 12px; 
+      border-radius: 4px; 
+      z-index: 20; 
+      font-size: 14px; 
+    }
+    /* dat.GUI styling */
+    .dg { 
+      z-index: 10 !important; 
+      font-size: 13px; 
+      background-color: rgba(0,0,0,0.8) !important;
+      border: 1px solid #444;
+      color: #fff;
+      transition: all 0.3s ease; 
+    }
+    .dg .property-name { 
+      color: #bbb !important; 
+    }
+    .dg .slider-fg { 
+      background: #3a8bd5 !important; 
+    }
+  </style>
+</head>
+<body>
+  <div id="header">Solar System Simulation</div>
+  <div id="instructions">Left-click a planet for details. Use the controls to adjust simulation speed, toggle orbits, and enjoy the sun's soft yellow halo effect.</div>
+  <div id="loading">Loading textures and simulation...</div>
+  <div id="info-panel" style="display:none;">
+    <div id="close-info">✕</div>
+    <div id="info-content"></div>
+  </div>
+  <div id="sim-clock"></div>
+  
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+  <script>
+    /*
+      SOLAR SYSTEM SIMULATION
+      
+      • Starts in 2000.
+      • Earth: Population starts at ~6.1B in 2000 and grows at ~1.13% per year.
+      • Temperature values update dynamically.
+      • Additional info such as distance and orbital period is shown.
+      • Meteors and comets occur as cosmetic overlays (decoupled from simulation time).
+      • A Kuiper Belt (outer belt of rocks) is included.
+      
+      SUN EFFECT:
+        - The sun features a soft yellow halo (created via a canvas-generated radial gradient)
+          that gives it a natural, fading glow.
+      
+      PLANET ROTATION:
+        - The simulation now updates each planet's axial rotation using the simulation time scale.
+          In particular, the Earth’s rotation speed is set so it rotates one full time (360°)
+          every 24 simulated hours.
+    */
+    
+    var scene, camera, renderer, controls, clock, solarSystem, raycaster, mouse, gui, simSettings;
+    var planets = [], textures = {}, simulationTime;
+    var starMatGlobal; // for star twinkle
+    var meteors = [], comets = [];
+    var kuiperBelt; // outer belt of rocks
+    
+    // Schedule meteor and comet events (in real seconds).
+    var nextMeteorTimeReal = 30 + Math.random() * 30;
+    var nextCometTimeReal = 300 + Math.random() * 300;
+    
+    // UI elements
+    var infoPanel = document.getElementById('info-panel'),
+        infoContent = document.getElementById('info-content'),
+        closeInfo = document.getElementById('close-info'),
+        simClockDiv = document.getElementById('sim-clock');
+    var selectedOutline = null, selectedPlanet = null;
+    
+    // Start simulation date: January 1, 2000.
+    var startSimDate = new Date("2000-01-01T00:00:00");
+    
+    init();
+    function init(){
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 3000);
+      camera.position.set(0,150,400);
+      renderer = new THREE.WebGLRenderer({antialias:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.1;
+      
+      clock = new THREE.Clock();
+      window.addEventListener('resize', onWindowResize, false);
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+      closeInfo.addEventListener('click', function(){ infoPanel.style.display = 'none'; });
+      renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
+      
+      solarSystem = new THREE.Group();
+      scene.add(solarSystem);
+      simulationTime = 0;
+      
+      loadTextures();
+      setupLighting();
+      createGUI();
+    }
+    function onWindowResize(){
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    function loadTextures(){
+      var loader = new THREE.TextureLoader();
+      var textureURLs = {
+        earth: 'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
+        moon: 'https://threejs.org/examples/textures/planets/moon_1024.jpg'
+      };
+      var promises = [];
+      for(var key in textureURLs){
+        (function(k){
+          promises.push(new Promise(function(resolve){
+            loader.load(textureURLs[k], function(tex){
+              textures[k] = tex; resolve();
+            }, undefined, function(){
+              console.error("Error loading texture: " + k); resolve();
+            });
+          }));
+        })(key);
+      }
+      Promise.all(promises).then(function(){
+        document.getElementById('loading').style.display = 'none';
+        createStarField();
+        createBackgroundStarCluster();
+        createSun();
+        createSunHalo(); // Restore sun halo effect.
+        createPlanets();
+        createKuiperBelt();
+        animate();
+      });
+    }
+    function setupLighting(){
+      var ambient = new THREE.AmbientLight(0x333333);
+      scene.add(ambient);
+      var sunLight = new THREE.PointLight(0xffffff, 2.2, 2500);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 1024;
+      sunLight.shadow.mapSize.height = 1024;
+      scene.add(sunLight);
+      solarSystem.userData.sunLight = sunLight;
+    }
+    function createGUI(){
+      // Default simulation time scale is set to 1 (real time).
+      simSettings = {
+        timeScale: 1,
+        showOrbits: true,
+        pause: false,
+        showKuiperBelt: true,
+        resetCamera: function(){ 
+          camera.position.set(0,150,400); 
+          controls.target.set(0,0,0); 
+        }
+      };
+      gui = new dat.GUI();
+      gui.add(simSettings, 'timeScale', 1, 10000000).name('Sim Speed (sec/sec)').step(1);
+      gui.add(simSettings, 'showOrbits').name('Show Orbits');
+      gui.add(simSettings, 'pause').name('Pause Simulation');
+      gui.add(simSettings, 'showKuiperBelt').name('Show Kuiper Belt');
+      gui.add(simSettings, 'resetCamera').name('Reset Camera');
+    }
+    // Create a twinkling star field (50,000 points).
+    function createStarField(){
+      var starCount = 50000;
+      var starGeo = new THREE.BufferGeometry();
+      var positions = new Float32Array(starCount * 3);
+      for (var i = 0; i < starCount; i++){
+        var index = i * 3;
+        var r = 1100 + Math.random() * 100;
+        var theta = Math.random() * Math.PI * 2;
+        var phi = Math.acos(2 * Math.random() - 1);
+        positions[index]   = r * Math.sin(phi) * Math.cos(theta);
+        positions[index+1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[index+2] = r * Math.cos(phi);
+      }
+      starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      starMatGlobal = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 1.5,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0.8
+      });
+      var stars = new THREE.Points(starGeo, starMatGlobal);
+      stars.renderOrder = -1;
+      scene.add(stars);
+    }
+    // Create a subtle background star cluster (a ring of stars in the distance).
+    function createBackgroundStarCluster(){
+      var cluster = new THREE.Group();
+      var starCount = 300;
+      var clusterGeo = new THREE.BufferGeometry();
+      var positions = new Float32Array(starCount * 3);
+      for (var i = 0; i < starCount; i++){
+        var theta = (i / starCount) * Math.PI * 2;
+        var r = 1200 + Math.random()*50;
+        positions[i*3] = r * Math.cos(theta);
+        positions[i*3+1] = Math.random()*50 - 25;
+        positions[i*3+2] = r * Math.sin(theta);
+      }
+      clusterGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      var clusterMat = new THREE.PointsMaterial({
+        color: 0xffeeaa,
+        size: 2,
+        transparent: true,
+        opacity: 0.6
+      });
+      var bgStarCluster = new THREE.Points(clusterGeo, clusterMat);
+      scene.add(bgStarCluster);
+    }
+    function createSun(){
+      var sunRadius = 10;
+      var sunGeo = new THREE.SphereGeometry(sunRadius, 64, 64);
+      var sunMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+      var sunMesh = new THREE.Mesh(sunGeo, sunMat);
+      sunMesh.position.set(0,0,0);
+      solarSystem.add(sunMesh);
+      solarSystem.userData.sunLight.position.copy(sunMesh.position);
+      sunMesh.name = "sun";
+      solarSystem.userData.sun = sunMesh;
+    }
+    // Create the sun halo effect using a canvas-generated radial gradient.
+    function createSunHalo(){
+      var size = 256;
+      var canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      var ctx = canvas.getContext('2d');
+      var gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+      gradient.addColorStop(0, 'rgba(255, 200, 0, 0.8)');
+      gradient.addColorStop(0.5, 'rgba(255, 150, 0, 0.3)');
+      gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      var texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      var material = new THREE.SpriteMaterial({
+        map: texture,
+        color: 0xffffff,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false
+      });
+      var sunHalo = new THREE.Sprite(material);
+      sunHalo.scale.set(60, 60, 1);
+      sunHalo.position.set(0,0,0);
+      solarSystem.add(sunHalo);
+    }
+    function createPlanets(){
+      // Adjust Earth's rotation speed so it rotates one full time (2π radians)
+      // in 24 simulated hours (i.e. 86400 seconds).
+      // 2π / 86400 ≈ 0.0000727 radians per simulation second.
+      var earthRotationSpeed = 2 * Math.PI / 86400;
+      
+      var planetData = [
+        { 
+          name: 'Mercury', 
+          distance: 15, 
+          radius: 0.38 * 1.6, 
+          color: 0x909090, 
+          orbitalPeriod: 88, 
+          rotationSpeed: 0.004, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "430°C (day) / -180°C (night)", 
+            "Water": "Almost none", 
+            "Life": "N/A", 
+            "Details": "Small, rocky planet." 
+          } 
+        },
+        { 
+          name: 'Venus', 
+          distance: 25, 
+          radius: 0.95 * 1.6, 
+          color: 0xe6c280, 
+          orbitalPeriod: 225, 
+          rotationSpeed: 0.002, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "465°C average", 
+            "Water": "N/A", 
+            "Life": "N/A", 
+            "Details": "Thick atmosphere with scorching heat." 
+          } 
+        },
+        { 
+          name: 'Earth', 
+          distance: 40, 
+          radius: 1.0 * 1.6, 
+          color: 0xffffff, 
+          orbitalPeriod: 365, 
+          rotationSpeed: earthRotationSpeed, 
+          info: { 
+            "Population": "Dynamic", 
+            "Temperature": "Dynamic", 
+            "Water": "71%", 
+            "Life": "100%", 
+            "Details": "Our vibrant home planet." 
+          } 
+        },
+        { 
+          name: 'Mars', 
+          distance: 55, 
+          radius: 0.53 * 1.6, 
+          color: 0xd14f4f, 
+          orbitalPeriod: 687, 
+          rotationSpeed: 0.018, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "-60°C average", 
+            "Water": "0.03% (ice)", 
+            "Life": "Unknown", 
+            "Details": "The red planet." 
+          } 
+        },
+        { 
+          name: 'Jupiter', 
+          distance: 80, 
+          radius: 11 * 1.6 * 0.1, 
+          color: 0xd2a679, 
+          orbitalPeriod: 4333, 
+          rotationSpeed: 0.04, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "-145°C average", 
+            "Water": "N/A", 
+            "Life": "N/A", 
+            "Details": "Largest gas giant." 
+          } 
+        },
+        { 
+          name: 'Saturn', 
+          distance: 100, 
+          radius: 9 * 1.6 * 0.1, 
+          color: 0xe0c090, 
+          orbitalPeriod: 10759, 
+          rotationSpeed: 0.038, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "-178°C average", 
+            "Water": "N/A", 
+            "Life": "N/A", 
+            "Details": "Famous for its rings." 
+          } 
+        },
+        { 
+          name: 'Uranus', 
+          distance: 120, 
+          radius: 4 * 1.6 * 0.1, 
+          color: 0x8fd4f7, 
+          orbitalPeriod: 30687, 
+          rotationSpeed: 0.03, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "-197°C average", 
+            "Water": "N/A", 
+            "Life": "N/A", 
+            "Details": "An ice giant with a unique tilt." 
+          } 
+        },
+        { 
+          name: 'Neptune', 
+          distance: 140, 
+          radius: 3.9 * 1.6 * 0.1, 
+          color: 0x6a8be0, 
+          orbitalPeriod: 60190, 
+          rotationSpeed: 0.032, 
+          info: { 
+            "Population": "N/A", 
+            "Temperature": "-201°C average", 
+            "Water": "N/A", 
+            "Life": "N/A", 
+            "Details": "Furthest known planet." 
+          } 
+        }
+      ];
+      planetData.forEach(function(data){
+        var orbitPivot = new THREE.Object3D();
+        solarSystem.add(orbitPivot);
+        var geo = new THREE.SphereGeometry(data.radius, 32, 32), mat;
+        if(data.name === 'Earth'){
+          mat = new THREE.MeshStandardMaterial({ map: textures.earth || null, roughness: 1 });
+        } else {
+          mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 1 });
+        }
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.position.set(data.distance, 0, 0);
+        mesh.userData = { 
+          planetInfo: data.info, 
+          planetName: data.name, 
+          baseRadius: data.radius, 
+          orbitalPeriod: data.orbitalPeriod,
+          planetDistance: data.distance
+        };
+        var planetObj = { 
+          name: data.name, 
+          mesh: mesh, 
+          pivot: orbitPivot, 
+          rotationSpeed: data.rotationSpeed, 
+          orbitLine: null 
+        };
+        planets.push(planetObj);
+        orbitPivot.add(mesh);
+        
+        var segments = 256;
+        var orbitGeo = new THREE.BufferGeometry();
+        var orbitVerts = new Float32Array((segments+1)*3);
+        for(var i = 0; i <= segments; i++){
+          var theta = (i/segments)*Math.PI*2;
+          orbitVerts[i*3]   = data.distance * Math.cos(theta);
+          orbitVerts[i*3+1] = 0;
+          orbitVerts[i*3+2] = data.distance * Math.sin(theta);
+        }
+        orbitGeo.setAttribute('position', new THREE.BufferAttribute(orbitVerts, 3));
+        var orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.2, transparent: true });
+        var orbitLine = new THREE.Line(orbitGeo, orbitMat);
+        solarSystem.add(orbitLine);
+        planetObj.orbitLine = orbitLine;
+        if(data.name === 'Earth'){ createMoon(mesh); }
+        if(data.name === 'Saturn'){ createSaturnRing(mesh, data.radius); }
+      });
+    }
+    // Create the moon so that it completes one orbit every 27.3 days.
+    function createMoon(earthMesh){
+      if(earthMesh.userData.moonPivot) return;
+      var moonPivot = new THREE.Object3D();
+      earthMesh.add(moonPivot);
+      var moonRadius = 0.3, moonDistance = 3;
+      var moonGeo = new THREE.SphereGeometry(moonRadius, 32, 32);
+      var moonMat = new THREE.MeshStandardMaterial({ map: textures.moon || null, color: 0xffffff, roughness: 1 });
+      var moonMesh = new THREE.Mesh(moonGeo, moonMat);
+      moonMesh.castShadow = true;
+      moonMesh.receiveShadow = true;
+      moonMesh.position.set(moonDistance, 0, 0);
+      moonPivot.add(moonMesh);
+      earthMesh.userData.moonPivot = moonPivot;
+      // Set orbit speed so the moon orbits once every 27.3 days.
+      earthMesh.userData.moonOrbitSpeed = 2 * Math.PI / (27.3 * 24 * 3600);
+    }
+    function createSaturnRing(saturnMesh, baseRadius){
+      var innerRadius = baseRadius * 1.3, outerRadius = baseRadius * 2.0;
+      var ringGeo = new THREE.RingGeometry(innerRadius, outerRadius, 64);
+      var ringMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+      var ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI/2;
+      saturnMesh.add(ring);
+    }
+    
+    // --- Selection Handling ---
+    function onPointerDown(event){
+      if(event.button !== 0) return;
+      event.preventDefault();
+      var rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      var intersects = raycaster.intersectObjects(planets.map(function(p){ return p.mesh; }), true);
+      if(intersects.length > 0){
+        var clicked = intersects[0].object;
+        var clickedPlanet = clicked;
+        while(clickedPlanet && (!clickedPlanet.userData || !clickedPlanet.userData.planetName) && clickedPlanet.parent){
+          clickedPlanet = clickedPlanet.parent;
+        }
+        if(selectedPlanet === clickedPlanet){
+          removeOutline();
+          selectedPlanet = null;
+          infoPanel.style.display = 'none';
+        } else {
+          removeOutline();
+          selectedPlanet = clickedPlanet;
+          selectPlanet(clickedPlanet);
+        }
+      }
+    }
+    function selectPlanet(object){
+      infoPanel.style.display = 'block';
+      updatePlanetInfo(object);
+      var outlineGeo = new THREE.SphereGeometry(object.userData.baseRadius * 1.15, 32, 32);
+      var outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.8, depthWrite: false });
+      selectedOutline = new THREE.Mesh(outlineGeo, outlineMat);
+      object.add(selectedOutline);
+    }
+    function removeOutline(){
+      if(selectedOutline && selectedOutline.parent){
+        selectedOutline.parent.remove(selectedOutline);
+        selectedOutline = null;
+      }
+    }
+    
+    // --- Info Panel Updates ---
+    function updatePlanetInfo(object){
+      var info = object.userData.planetInfo, name = object.userData.planetName;
+      var html = '<h2>' + name + '</h2>';
+      if(name === "Earth"){
+        var simDate = new Date(startSimDate.getTime() + simulationTime * 1000);
+        var startOfYear = new Date(simDate.getFullYear(), 0, 1);
+        var dayOfYear = Math.floor((simDate - startOfYear) / (1000*60*60*24)) + 1;
+        var temp = 15 + 10 * Math.sin((2*Math.PI*(dayOfYear/365)) - (Math.PI/2));
+        temp = temp.toFixed(1) + "°C";
+        var years = (simDate - startSimDate) / (1000*60*60*24*365);
+        var basePop = 6.1e9;
+        var pop = basePop * Math.pow(1.0113, years);
+        var popFormatted = (pop / 1e9).toFixed(2) + " Billion";
+        html += '<p><strong>Date:</strong> ' + simDate.toLocaleDateString() + '</p>';
+        html += '<p><strong>Year:</strong> ' + simDate.getFullYear() + '</p>';
+        html += '<p><strong>Population:</strong> ' + popFormatted + '</p>';
+        html += '<p><strong>Temperature:</strong> ' + temp + '</p>';
+        html += '<p><strong>Water:</strong> ' + info["Water"] + '</p>';
+        html += '<p><strong>Life:</strong> ' + info["Life"] + '</p>';
+        html += '<p><strong>Details:</strong> ' + info["Details"] + '</p>';
+      } else {
+        if(info["Temperature"].toLowerCase().indexOf("average") !== -1){
+          var avgTemp = parseFloat(info["Temperature"]);
+          var variation = 5 * Math.sin(simulationTime / 86400 * 2 * Math.PI);
+          var newTemp = (avgTemp + variation).toFixed(1) + "°C";
+          html += '<p><strong>Temperature:</strong> ' + newTemp + '</p>';
+        } else {
+          html += '<p><strong>Temperature:</strong> ' + info["Temperature"] + '</p>';
+        }
+        for(var key in info){ 
+          if(key !== "Temperature") {
+            html += '<p><strong>' + key + ':</strong> ' + info[key] + '</p>'; 
+          }
+        }
+      }
+      if(object.userData.planetDistance){
+        html += '<p><strong>Distance:</strong> ' + object.userData.planetDistance + ' units</p>';
+      }
+      if(object.userData.orbitalPeriod){
+        html += '<p><strong>Orbital Period:</strong> ' + object.userData.orbitalPeriod + ' days</p>';
+      }
+      infoContent.innerHTML = html;
+    }
+    
+    // --- Visual Effects (Meteors & Comets) ---
+    function triggerMeteor(){
+      var meteorGeo = new THREE.SphereGeometry(0.7, 8, 8);
+      var meteorMat = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+      var meteor = new THREE.Mesh(meteorGeo, meteorMat);
+      meteor.position.set(-2000, Math.random()*400 - 200, Math.random()*400 - 200);
+      meteor.userData.velocity = new THREE.Vector3(1 + Math.random(), (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3);
+      var trailLength = 10;
+      var trailGeo = new THREE.BufferGeometry();
+      var trailPositions = new Float32Array(trailLength * 3);
+      for(var i=0; i<trailLength; i++){
+        trailPositions[i*3] = meteor.position.x;
+        trailPositions[i*3+1] = meteor.position.y;
+        trailPositions[i*3+2] = meteor.position.z;
+      }
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+      var trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+      var trail = new THREE.Line(trailGeo, trailMat);
+      meteor.userData.trail = trail;
+      scene.add(meteor);
+      scene.add(trail);
+      meteors.push(meteor);
+    }
+    function updateMeteors(delta){
+      for (var i = meteors.length-1; i >= 0; i--){
+        var m = meteors[i];
+        m.position.add(m.userData.velocity.clone().multiplyScalar(delta * 300));
+        var trail = m.userData.trail;
+        var posAttr = trail.geometry.attributes.position;
+        for(var j = posAttr.count - 1; j > 0; j--){
+          posAttr.setXYZ(j, posAttr.getX(j-1), posAttr.getY(j-1), posAttr.getZ(j-1));
+        }
+        posAttr.setXYZ(0, m.position.x, m.position.y, m.position.z);
+        posAttr.needsUpdate = true;
+        if(m.position.x > 2000){
+          scene.remove(m.userData.trail);
+          scene.remove(m);
+          meteors.splice(i, 1);
+        }
+      }
+    }
+    function triggerComet(){
+      var cometGeo = new THREE.SphereGeometry(1.2, 16, 16);
+      var cometMat = new THREE.MeshBasicMaterial({ color: 0xddddff });
+      var comet = new THREE.Mesh(cometGeo, cometMat);
+      comet.position.set(-2000, Math.random()*300 - 150, Math.random()*300 - 150);
+      comet.userData.velocity = new THREE.Vector3(0.5 + Math.random()*0.5, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2);
+      var tailLength = 20;
+      var tailGeo = new THREE.BufferGeometry();
+      var tailPositions = new Float32Array(tailLength * 3);
+      for(var i = 0; i < tailLength; i++){
+        tailPositions[i*3] = comet.position.x;
+        tailPositions[i*3+1] = comet.position.y;
+        tailPositions[i*3+2] = comet.position.z;
+      }
+      tailGeo.setAttribute('position', new THREE.BufferAttribute(tailPositions, 3));
+      var tailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+      var tail = new THREE.Line(tailGeo, tailMat);
+      comet.userData.tail = tail;
+      scene.add(comet);
+      scene.add(tail);
+      comets.push(comet);
+    }
+    function updateComets(delta){
+      for (var i = comets.length-1; i >= 0; i--){
+        var c = comets[i];
+        c.position.add(c.userData.velocity.clone().multiplyScalar(delta * 150));
+        var tail = c.userData.tail;
+        var posAttr = tail.geometry.attributes.position;
+        for(var j = posAttr.count - 1; j > 0; j--){
+          posAttr.setXYZ(j, posAttr.getX(j-1), posAttr.getY(j-1), posAttr.getZ(j-1));
+        }
+        posAttr.setXYZ(0, c.position.x, c.position.y, c.position.z);
+        posAttr.needsUpdate = true;
+        if(c.position.x > 2000){
+          scene.remove(c.userData.tail);
+          scene.remove(c);
+          comets.splice(i, 1);
+        }
+      }
+    }
+    
+    // Extra Feature: Create a Kuiper Belt (outer belt of rocks).
+    function createKuiperBelt(){
+      kuiperBelt = new THREE.Group();
+      var rockCount = 500;
+      for(var i = 0; i < rockCount; i++){
+        var size = Math.random()*0.2 + 0.1;
+        var geo = new THREE.SphereGeometry(size, 6, 6);
+        var mat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 1 });
+        var rock = new THREE.Mesh(geo, mat);
+        var angle = Math.random()*2*Math.PI;
+        var distance = 160 + Math.random()*(200-160);
+        var y = Math.random()*4 - 2;
+        rock.position.set(distance * Math.cos(angle), y, distance * Math.sin(angle));
+        rock.userData.baseScale = rock.scale.clone();
+        rock.userData.phase = Math.random()*Math.PI*2;
+        kuiperBelt.add(rock);
+      }
+      kuiperBelt.userData.rotateSpeed = 0.0002;
+      scene.add(kuiperBelt);
+    }
+    function updateKuiperBelt(delta, elapsedTime){
+      if(!kuiperBelt) return;
+      kuiperBelt.rotation.y += kuiperBelt.userData.rotateSpeed * delta * 60;
+      kuiperBelt.children.forEach(function(rock){
+        var factor = 1 + 0.2 * Math.sin(elapsedTime + rock.userData.phase);
+        rock.scale.set(
+          rock.userData.baseScale.x * factor,
+          rock.userData.baseScale.y * factor,
+          rock.userData.baseScale.z * factor
+        );
+      });
+      kuiperBelt.visible = simSettings.showKuiperBelt;
+    }
+    
+    /* -----------------------------------------
+         MAIN ANIMATION LOOP
+    ----------------------------------------- */
+    function animate(){
+      requestAnimationFrame(animate);
+      var delta = clock.getDelta();
+      var realTime = clock.getElapsedTime();
+      
+      if(starMatGlobal){
+        starMatGlobal.opacity = 0.8 + 0.2 * Math.sin(simulationTime * 0.3);
+      }
+      
+      if(!simSettings.pause){
+        simulationTime += delta * simSettings.timeScale;
+        planets.forEach(function(planet){
+          // Update axial rotation using simulation time scale.
+          planet.mesh.rotation.y += planet.rotationSpeed * delta * simSettings.timeScale;
+          var periodSec = planet.mesh.userData.orbitalPeriod * 24 * 3600;
+          var angularVel = (2 * Math.PI) / periodSec;
+          planet.pivot.rotation.y += angularVel * (delta * simSettings.timeScale);
+          if(planet.name === "Earth" && planet.mesh.userData.moonPivot){
+            planet.mesh.userData.moonPivot.rotation.y += planet.mesh.userData.moonOrbitSpeed * (delta * simSettings.timeScale);
+          }
+        });
+      }
+      
+      if(realTime >= nextMeteorTimeReal){
+        triggerMeteor();
+        nextMeteorTimeReal = realTime + 30 + Math.random()*30;
+      }
+      updateMeteors(delta);
+      
+      if(realTime >= nextCometTimeReal){
+        triggerComet();
+        nextCometTimeReal = realTime + 300 + Math.random()*300;
+      }
+      updateComets(delta);
+      
+      updateKuiperBelt(delta, realTime);
+      
+      if(selectedPlanet){
+        updatePlanetInfo(selectedPlanet);
+      }
+      
+      planets.forEach(function(planet){
+        if(planet.orbitLine) planet.orbitLine.visible = simSettings.showOrbits;
+      });
+      controls.update();
+      renderer.render(scene, camera);
+      updateSimClock();
+    }
+    function updateSimClock(){
+      var d = new Date(startSimDate.getTime() + simulationTime * 1000);
+      simClockDiv.innerHTML = 'Sim Time: ' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+    animate();
+  </script>
+</body>
+</html>
