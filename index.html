@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Solar System Simulation (Realistic Spacing & Bigger Rings)</title>
+  <title>Solar System Simulation (Realistic Spacing, Kuiper Belt & Dynamic Earth)</title>
   <style>
     body { 
       margin: 0; 
@@ -118,18 +118,20 @@
   <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
   <script>
     /*
-      SOLAR SYSTEM SIMULATION (Realistic Spacing & Bigger Rings)
+      SOLAR SYSTEM SIMULATION (Realistic Spacing, Kuiper Belt & Dynamic Earth)
       
       • Starts in 2000.
-      • Planet sizes have been adjusted to more realistic relative proportions.
-      • Orbital distances for the inner planets are scaled (e.g. Mercury ~60, Venus ~100, Earth ~140, Mars ~210).
-      • Outer planets have been repositioned for visual clarity.
-      • Saturn’s rings have been made larger.
-      • Earth’s temperature includes a seasonal cycle and a small global warming trend.
+      • Planet sizes are adjusted to more realistic relative proportions.
+      • Inner planetary orbital distances are scaled: Mercury ~60, Venus ~100, Earth ~140, Mars ~210.
+      • Outer planets are placed for visual clarity.
+      • Saturn’s rings are enlarged.
+      • The Kuiper Belt is generated behind Neptune (between 600 and 800 units from the Sun).
+      • Earth’s info panel now dynamically updates life status based on temperature:
+           - Below 50°C: “Dynamic” values.
+           - Above 50°C: Life becomes “No Life,” Population “Extinct,” and Water “Dwindling.”
       • Simulation speed can be increased up to 1,000,000,000 sec/sec.
       
-      Note: Because the true scale differences in the Solar System are enormous, 
-      these values are a compromise for visual clarity.
+      Note: These values are a compromise for visual clarity.
     */
     
     var scene, camera, renderer, controls, clock, solarSystem, raycaster, mouse, gui, simSettings;
@@ -342,11 +344,11 @@
       // Real planetary radius ratios (relative to Earth):
       // Mercury: 0.382, Venus: 0.949, Earth: 1, Mars: 0.532.
       // For the gas giants, we scale down by 10.
-      var earthRotationSpeed = 2 * Math.PI / 86400;  // Earth rotates one full time in 24 simulated hours.
+      var earthRotationSpeed = 2 * Math.PI / 86400;  // Earth rotates once every 24 simulated hours.
       
-      // Updated orbital distances based on rough real ratios for the inner planets:
-      // Mercury ~60, Venus ~100, Earth ~140, Mars ~210.
-      // Outer planets are placed for visual clarity.
+      // Updated orbital distances based on rough ratios:
+      // Mercury: 60, Venus: 100, Earth: 140, Mars: 210.
+      // Outer planets (Jupiter, Saturn, Uranus, Neptune) are placed for visual clarity.
       var planetData = [
         { 
           name: 'Mercury', 
@@ -387,7 +389,7 @@
           rotationSpeed: earthRotationSpeed, 
           info: { 
             "Population": "Dynamic", 
-            // Temperature now includes seasonal variation plus a global warming trend.
+            // Temperature is computed dynamically (see updatePlanetInfo)
             "Temperature": "Dynamic", 
             "Water": "71%", 
             "Life": "100%", 
@@ -601,12 +603,25 @@
         // Global warming trend: increase by 0.02°C per simulated year.
         var warmingTrend = years * 0.02;
         var temp = 15 + 10 * Math.sin((2*Math.PI*(dayOfYear/365)) - (Math.PI/2)) + warmingTrend;
+        
+        // Update Earth environmental conditions based on temperature.
+        var population, water, life;
+        if(temp > 50){
+          population = "0 (Extinct)";
+          water = "Dwindling";
+          life = "No Life";
+        } else {
+          population = "Dynamic";
+          water = "71%";
+          life = "100%";
+        }
+        
         html += '<p><strong>Date:</strong> ' + simDate.toLocaleDateString() + '</p>';
         html += '<p><strong>Year:</strong> ' + simDate.getFullYear() + '</p>';
-        html += '<p><strong>Population:</strong> Dynamic</p>';
+        html += '<p><strong>Population:</strong> ' + population + '</p>';
         html += '<p><strong>Temperature:</strong> ' + temp.toFixed(1) + '°C</p>';
-        html += '<p><strong>Water:</strong> ' + info["Water"] + '</p>';
-        html += '<p><strong>Life:</strong> ' + info["Life"] + '</p>';
+        html += '<p><strong>Water:</strong> ' + water + '</p>';
+        html += '<p><strong>Life:</strong> ' + life + '</p>';
         html += '<p><strong>Details:</strong> ' + info["Details"] + '</p>';
       } else {
         if(info["Temperature"].toLowerCase().indexOf("average") !== -1){
@@ -714,7 +729,7 @@
       }
     }
     
-    // Extra Feature: Create a Kuiper Belt.
+    // Extra Feature: Create a Kuiper Belt further away (from 600 to 800 units).
     function createKuiperBelt(){
       kuiperBelt = new THREE.Group();
       var rockCount = 500;
@@ -724,8 +739,9 @@
         var mat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 1 });
         var rock = new THREE.Mesh(geo, mat);
         var angle = Math.random()*2*Math.PI;
-        var distance = 160 + Math.random()*(200-160);
-        var y = Math.random()*4 - 2;
+        // Place rocks between 600 and 800 units from the Sun.
+        var distance = 600 + Math.random() * 200;
+        var y = Math.random()*10 - 5;
         rock.position.set(distance * Math.cos(angle), y, distance * Math.sin(angle));
         rock.userData.baseScale = rock.scale.clone();
         rock.userData.phase = Math.random()*Math.PI*2;
@@ -763,7 +779,7 @@
       if(!simSettings.pause){
         simulationTime += delta * simSettings.timeScale;
         planets.forEach(function(planet){
-          // Update axial rotation using simulation time scale.
+          // Update axial rotation.
           planet.mesh.rotation.y += planet.rotationSpeed * delta * simSettings.timeScale;
           var periodSec = planet.mesh.userData.orbitalPeriod * 24 * 3600;
           var angularVel = (2 * Math.PI) / periodSec;
