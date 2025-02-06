@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Solar System Simulation by zy (Updated)</title>
+  <title>Solar System Simulation by zy (Updated Distances)</title>
   <style>
     body { 
       margin: 0; 
@@ -118,10 +118,11 @@
   <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
   <script>
     /*
-      SOLAR SYSTEM SIMULATION (Updated)
+      SOLAR SYSTEM SIMULATION (Updated Distances)
       
       • Starts in 2000.
       • Planet sizes have been adjusted to more realistic relative proportions.
+      • Planet orbital distances have been increased so that they no longer collide with the Sun.
       • Earth’s temperature now includes a seasonal cycle plus a small global warming trend.
       • Simulation speed can now be increased up to 1,000,000,000 sec/sec.
       
@@ -294,7 +295,7 @@
     }
     // Create the Sun with a reduced radius for better relative scale.
     function createSun(){
-      // For visual clarity, the sun is set to a radius of 40 (instead of 10).
+      // For visual clarity, the sun is set to a radius of 40.
       var sunRadius = 40;
       var sunGeo = new THREE.SphereGeometry(sunRadius, 64, 64);
       var sunMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
@@ -333,7 +334,7 @@
       sunHalo.position.set(0,0,0);
       solarSystem.add(sunHalo);
     }
-    // Create planets with updated relative sizes.
+    // Create planets with updated relative sizes and increased orbital distances.
     function createPlanets(){
       // For consistency, we use Earth’s simulated radius as 1.6.
       // Real planetary radius ratios (relative to Earth):
@@ -342,10 +343,11 @@
       // Gas giants are scaled down by 10 in this simulation for visibility.
       var earthRotationSpeed = 2 * Math.PI / 86400;  // Earth rotates one full time in 24 simulated hours.
       
+      // Updated orbital distances ensure planets remain outside the Sun.
       var planetData = [
         { 
           name: 'Mercury', 
-          distance: 15, 
+          distance: 80, 
           radius: 0.382 * 1.6, 
           color: 0x909090, 
           orbitalPeriod: 88, 
@@ -360,7 +362,7 @@
         },
         { 
           name: 'Venus', 
-          distance: 25, 
+          distance: 110, 
           radius: 0.949 * 1.6, 
           color: 0xe6c280, 
           orbitalPeriod: 225, 
@@ -375,7 +377,7 @@
         },
         { 
           name: 'Earth', 
-          distance: 40, 
+          distance: 140, 
           radius: 1.0 * 1.6, 
           color: 0xffffff, 
           orbitalPeriod: 365, 
@@ -392,7 +394,7 @@
         },
         { 
           name: 'Mars', 
-          distance: 55, 
+          distance: 170, 
           radius: 0.532 * 1.6, 
           color: 0xd14f4f, 
           orbitalPeriod: 687, 
@@ -407,7 +409,7 @@
         },
         { 
           name: 'Jupiter', 
-          distance: 80, 
+          distance: 220, 
           radius: 11.21 * 1.6 * 0.1, 
           color: 0xd2a679, 
           orbitalPeriod: 4333, 
@@ -422,7 +424,7 @@
         },
         { 
           name: 'Saturn', 
-          distance: 100, 
+          distance: 260, 
           radius: 9.45 * 1.6 * 0.1, 
           color: 0xe0c090, 
           orbitalPeriod: 10759, 
@@ -437,7 +439,7 @@
         },
         { 
           name: 'Uranus', 
-          distance: 120, 
+          distance: 300, 
           radius: 4.01 * 1.6 * 0.1, 
           color: 0x8fd4f7, 
           orbitalPeriod: 30687, 
@@ -452,7 +454,7 @@
         },
         { 
           name: 'Neptune', 
-          distance: 140, 
+          distance: 340, 
           radius: 3.88 * 1.6 * 0.1, 
           color: 0x6a8be0, 
           orbitalPeriod: 60190, 
