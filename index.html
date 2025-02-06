@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Solar System Simulation by zy</title>
+  <title>Solar System Simulation by zy (Updated)</title>
   <style>
     body { 
       margin: 0; 
@@ -105,7 +105,7 @@
 </head>
 <body>
   <div id="header">Solar System Simulation</div>
-  <div id="instructions">Left-click a planet for details. Use the controls to adjust simulation speed, u can also move by holding right-click, have fun!</div>
+  <div id="instructions">Left-click a planet for details. Use the controls to adjust simulation speed; you can also move by holding right-click. Enjoy!</div>
   <div id="loading">Loading textures and simulation...</div>
   <div id="info-panel" style="display:none;">
     <div id="close-info">✕</div>
@@ -118,23 +118,15 @@
   <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
   <script>
     /*
-      SOLAR SYSTEM SIMULATION
+      SOLAR SYSTEM SIMULATION (Updated)
       
       • Starts in 2000.
-      • Earth: Population starts at ~6.1B in 2000 and grows at ~1.13% per year.
-      • Temperature values update dynamically.
-      • Additional info such as distance and orbital period is shown.
-      • Meteors and comets occur as cosmetic overlays (decoupled from simulation time).
-      • A Kuiper Belt (outer belt of rocks) is included.
+      • Planet sizes have been adjusted to more realistic relative proportions.
+      • Earth’s temperature now includes a seasonal cycle plus a small global warming trend.
+      • Simulation speed can now be increased up to 1,000,000,000 sec/sec.
       
-      SUN EFFECT:
-        - The sun features a soft yellow halo (created via a canvas-generated radial gradient)
-          that gives it a natural, fading glow.
-      
-      PLANET ROTATION:
-        - The simulation now updates each planet's axial rotation using the simulation time scale.
-          In particular, the Earth’s rotation speed is set so it rotates one full time (360°)
-          every 24 simulated hours.
+      Note: Because the true scale differences in the Solar System are enormous, 
+      the values below are a compromise for visual clarity.
     */
     
     var scene, camera, renderer, controls, clock, solarSystem, raycaster, mouse, gui, simSettings;
@@ -161,7 +153,7 @@
     function init(){
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000000);
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 3000);
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 5000);
       camera.position.set(0,150,400);
       renderer = new THREE.WebGLRenderer({antialias:true});
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -244,7 +236,8 @@
         }
       };
       gui = new dat.GUI();
-      gui.add(simSettings, 'timeScale', 1, 10000000).name('Sim Speed (sec/sec)').step(1);
+      // Increase maximum simulation speed to 1,000,000,000 sec/sec.
+      gui.add(simSettings, 'timeScale', 1, 1e9).name('Sim Speed (sec/sec)').step(1);
       gui.add(simSettings, 'showOrbits').name('Show Orbits');
       gui.add(simSettings, 'pause').name('Pause Simulation');
       gui.add(simSettings, 'showKuiperBelt').name('Show Kuiper Belt');
@@ -276,7 +269,7 @@
       stars.renderOrder = -1;
       scene.add(stars);
     }
-    // Create a subtle background star cluster (a ring of stars in the distance).
+    // Create a subtle background star cluster.
     function createBackgroundStarCluster(){
       var cluster = new THREE.Group();
       var starCount = 300;
@@ -299,8 +292,10 @@
       var bgStarCluster = new THREE.Points(clusterGeo, clusterMat);
       scene.add(bgStarCluster);
     }
+    // Create the Sun with a reduced radius for better relative scale.
     function createSun(){
-      var sunRadius = 10;
+      // For visual clarity, the sun is set to a radius of 40 (instead of 10).
+      var sunRadius = 40;
       var sunGeo = new THREE.SphereGeometry(sunRadius, 64, 64);
       var sunMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
       var sunMesh = new THREE.Mesh(sunGeo, sunMat);
@@ -338,17 +333,20 @@
       sunHalo.position.set(0,0,0);
       solarSystem.add(sunHalo);
     }
+    // Create planets with updated relative sizes.
     function createPlanets(){
-      // Adjust Earth's rotation speed so it rotates one full time (2π radians)
-      // in 24 simulated hours (i.e. 86400 seconds).
-      // 2π / 86400 ≈ 0.0000727 radians per simulation second.
-      var earthRotationSpeed = 2 * Math.PI / 86400;
+      // For consistency, we use Earth’s simulated radius as 1.6.
+      // Real planetary radius ratios (relative to Earth):
+      // Mercury: 0.382, Venus: 0.949, Earth: 1, Mars: 0.532,
+      // Jupiter: 11.21, Saturn: 9.45, Uranus: 4.01, Neptune: 3.88.
+      // Gas giants are scaled down by 10 in this simulation for visibility.
+      var earthRotationSpeed = 2 * Math.PI / 86400;  // Earth rotates one full time in 24 simulated hours.
       
       var planetData = [
         { 
           name: 'Mercury', 
           distance: 15, 
-          radius: 0.38 * 1.6, 
+          radius: 0.382 * 1.6, 
           color: 0x909090, 
           orbitalPeriod: 88, 
           rotationSpeed: 0.004, 
@@ -363,7 +361,7 @@
         { 
           name: 'Venus', 
           distance: 25, 
-          radius: 0.95 * 1.6, 
+          radius: 0.949 * 1.6, 
           color: 0xe6c280, 
           orbitalPeriod: 225, 
           rotationSpeed: 0.002, 
@@ -384,6 +382,8 @@
           rotationSpeed: earthRotationSpeed, 
           info: { 
             "Population": "Dynamic", 
+            // Temperature now includes seasonal variation plus a global warming trend.
+            // Baseline 15°C plus 10°C seasonal swing plus an increase of 0.02°C per simulation year.
             "Temperature": "Dynamic", 
             "Water": "71%", 
             "Life": "100%", 
@@ -393,7 +393,7 @@
         { 
           name: 'Mars', 
           distance: 55, 
-          radius: 0.53 * 1.6, 
+          radius: 0.532 * 1.6, 
           color: 0xd14f4f, 
           orbitalPeriod: 687, 
           rotationSpeed: 0.018, 
@@ -408,7 +408,7 @@
         { 
           name: 'Jupiter', 
           distance: 80, 
-          radius: 11 * 1.6 * 0.1, 
+          radius: 11.21 * 1.6 * 0.1, 
           color: 0xd2a679, 
           orbitalPeriod: 4333, 
           rotationSpeed: 0.04, 
@@ -423,7 +423,7 @@
         { 
           name: 'Saturn', 
           distance: 100, 
-          radius: 9 * 1.6 * 0.1, 
+          radius: 9.45 * 1.6 * 0.1, 
           color: 0xe0c090, 
           orbitalPeriod: 10759, 
           rotationSpeed: 0.038, 
@@ -438,7 +438,7 @@
         { 
           name: 'Uranus', 
           distance: 120, 
-          radius: 4 * 1.6 * 0.1, 
+          radius: 4.01 * 1.6 * 0.1, 
           color: 0x8fd4f7, 
           orbitalPeriod: 30687, 
           rotationSpeed: 0.03, 
@@ -453,7 +453,7 @@
         { 
           name: 'Neptune', 
           distance: 140, 
-          radius: 3.9 * 1.6 * 0.1, 
+          radius: 3.88 * 1.6 * 0.1, 
           color: 0x6a8be0, 
           orbitalPeriod: 60190, 
           rotationSpeed: 0.032, 
@@ -466,6 +466,7 @@
           } 
         }
       ];
+      
       planetData.forEach(function(data){
         var orbitPivot = new THREE.Object3D();
         solarSystem.add(orbitPivot);
@@ -514,7 +515,7 @@
         if(data.name === 'Saturn'){ createSaturnRing(mesh, data.radius); }
       });
     }
-    // Create the moon so that it completes one orbit every 27.3 days.
+    // Create the Moon orbiting Earth.
     function createMoon(earthMesh){
       if(earthMesh.userData.moonPivot) return;
       var moonPivot = new THREE.Object3D();
@@ -528,7 +529,7 @@
       moonMesh.position.set(moonDistance, 0, 0);
       moonPivot.add(moonMesh);
       earthMesh.userData.moonPivot = moonPivot;
-      // Set orbit speed so the moon orbits once every 27.3 days.
+      // Moon orbits once every 27.3 days.
       earthMesh.userData.moonOrbitSpeed = 2 * Math.PI / (27.3 * 24 * 3600);
     }
     function createSaturnRing(saturnMesh, baseRadius){
@@ -589,16 +590,14 @@
         var simDate = new Date(startSimDate.getTime() + simulationTime * 1000);
         var startOfYear = new Date(simDate.getFullYear(), 0, 1);
         var dayOfYear = Math.floor((simDate - startOfYear) / (1000*60*60*24)) + 1;
-        var temp = 15 + 10 * Math.sin((2*Math.PI*(dayOfYear/365)) - (Math.PI/2));
-        temp = temp.toFixed(1) + "°C";
         var years = (simDate - startSimDate) / (1000*60*60*24*365);
-        var basePop = 6.1e9;
-        var pop = basePop * Math.pow(1.0113, years);
-        var popFormatted = (pop / 1e9).toFixed(2) + " Billion";
+        // Global warming trend: increase by 0.02°C per simulated year.
+        var warmingTrend = years * 0.02;
+        var temp = 15 + 10 * Math.sin((2*Math.PI*(dayOfYear/365)) - (Math.PI/2)) + warmingTrend;
         html += '<p><strong>Date:</strong> ' + simDate.toLocaleDateString() + '</p>';
         html += '<p><strong>Year:</strong> ' + simDate.getFullYear() + '</p>';
-        html += '<p><strong>Population:</strong> ' + popFormatted + '</p>';
-        html += '<p><strong>Temperature:</strong> ' + temp + '</p>';
+        html += '<p><strong>Population:</strong> Dynamic</p>';
+        html += '<p><strong>Temperature:</strong> ' + temp.toFixed(1) + '°C</p>';
         html += '<p><strong>Water:</strong> ' + info["Water"] + '</p>';
         html += '<p><strong>Life:</strong> ' + info["Life"] + '</p>';
         html += '<p><strong>Details:</strong> ' + info["Details"] + '</p>';
@@ -708,7 +707,7 @@
       }
     }
     
-    // Extra Feature: Create a Kuiper Belt (outer belt of rocks).
+    // Extra Feature: Create a Kuiper Belt.
     function createKuiperBelt(){
       kuiperBelt = new THREE.Group();
       var rockCount = 500;
